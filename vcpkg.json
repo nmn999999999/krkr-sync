@@ -1,0 +1,32 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+  "name": "krkr-sync",
+  "version-semver": "1.0.0",
+  "description": "Cross-platform galgame save sync between iOS and Windows",
+  "dependencies": [
+    {
+      "name": "boost-asio",
+      "version>=": "1.82.0"
+    },
+    {
+      "name": "boost-system",
+      "version>=": "1.82.0"
+    },
+    {
+      "name": "boost-thread",
+      "version>=": "1.82.0"
+    },
+    {
+      "name": "curl",
+      "version>=": "8.0.0"
+    },
+    {
+      "name": "nlohmann-json",
+      "version>=": "3.11.0"
+    },
+    {
+      "name": "openssl",
+      "version>=": "3.0.0"
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+# Build directories
+build*/
+cmake-build-*/
+out/
+
+# IDE files
+.vs/
+.vscode/
+*.user
+*.suo
+*.sln
+*.vcxproj*
+
+# Compiled binaries
+*.exe
+*.lib
+*.pdb
+*.ilk
+*.exp
+
+# macOS
+.DS_Store
+*.xcworkspace
+*.xcodeproj
+xcuserdata/
+
+# iOS
+DerivedData/
+*.ipa
+
+# vcpkg
+vcpkg_installed/
+
+# Temporary files
+*.tmp
+*.log
