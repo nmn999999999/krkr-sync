@@ -42,10 +42,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install OpenSSL
-        run: |
-          brew install openssl@3
-
       - name: Build for iOS Device
         run: |
           mkdir -p build-ios-device
@@ -55,8 +51,7 @@ jobs:
             -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0 \
             -DCMAKE_OSX_ARCHITECTURES=arm64 \
             -DCMAKE_OSX_SYSROOT=iphoneos \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DOPENSSL_ROOT_DIR=$(brew --prefix openssl@3)
+            -DCMAKE_BUILD_TYPE=Release
           cmake --build . --config Release
 
       - name: Build for iOS Simulator
@@ -68,8 +63,7 @@ jobs:
             -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0 \
             -DCMAKE_OSX_ARCHITECTURES=x86_64 \
             -DCMAKE_OSX_SYSROOT=iphonesimulator \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DOPENSSL_ROOT_DIR=$(brew --prefix openssl@3)
+            -DCMAKE_BUILD_TYPE=Release
           cmake --build . --config Release
 
       - name: Create XCFramework

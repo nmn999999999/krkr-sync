@@ -81,7 +81,7 @@ void DiscoveryService::recv_loop() {
     char buf[1024];
     while (running_) {
         sockaddr_in sender{};
-        int sender_len = sizeof(sender);
+        SOCKLEN_T sender_len = sizeof(sender);
         int n = recvfrom(recv_sock_, buf, sizeof(buf) - 1, 0, (sockaddr*)&sender, &sender_len);
         if (n <= 0) continue;
         buf[n] = '\0';
