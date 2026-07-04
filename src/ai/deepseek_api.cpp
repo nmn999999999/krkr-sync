@@ -1,7 +1,16 @@
 #include "krkr_sync/deepseek_api.h"
-#include <winhttp.h>
 
+#ifdef _WIN32
+#include <winhttp.h>
 #pragma comment(lib, "winhttp.lib")
+#else
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <openssl/ssl.h>
+#include <openssl/err.h>
+#endif
 
 namespace krkr_sync {
 
@@ -16,6 +25,7 @@ std::string DeepSeekAPI::build_prompt(const DetectedGame& game) {
     return prompt;
 }
 
+#ifdef _WIN32
 std::string DeepSeekAPI::call_api(const std::string& prompt) {
     if (api_key_.empty()) return R"({"success":false,"error":"API key not set"})";
 
@@ -32,10 +42,8 @@ std::string DeepSeekAPI::call_api(const std::string& prompt) {
                                              WINHTTP_DEFAULT_ACCEPT_TYPES, WINHTTP_FLAG_SECURE);
     if (!hRequest) { WinHttpCloseHandle(hConnect); WinHttpCloseHandle(hSession); return R"({"success":false,"error":"OpenRequest failed"})"; }
 
-    // Build JSON request
     std::string json_body = R"({"model":")" + model_ + R"(","messages":[{"role":"system","content":"You are a visual novel identification expert. Respond ONLY with JSON."},{"role":"user","content":")" + prompt + R"("}],"temperature":0.1,"max_tokens":512})";
 
-    // Set headers
     std::wstring headers = L"Content-Type: application/json\r\nAuthorization: Bearer ";
     headers += std::wstring(api_key_.begin(), api_key_.end());
 
@@ -60,6 +68,67 @@ std::string DeepSeekAPI::call_api(const std::string& prompt) {
 
     return response.empty() ? R"({"success":false,"error":"Empty response"})" : response;
 }
+#else
+std::string DeepSeekAPI::call_api(const std::string& prompt) {
+    if (api_key_.empty()) return R"({"success":false,"error":"API key not set"})";
+
+    // Simple HTTPS POST using POSIX sockets + OpenSSL
+    struct addrinfo hints{}, *result;
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+
+    if (getaddrinfo("api.deepseek.com", "443", &hints, &result) != 0)
+        return R"({"success":false,"error":"DNS resolution failed"})";
+
+    int sock = socket(result->ai_family, result->ai_socktype, result->ai_protocol);
+    if (sock < 0) { freeaddrinfo(result); return R"({"success":false,"error":"Socket creation failed"})"; }
+
+    if (connect(sock, result->ai_addr, result->ai_addrlen) < 0) {
+        close(sock); freeaddrinfo(result);
+        return R"({"success":false,"error":"Connection failed"})";
+    }
+    freeaddrinfo(result);
+
+    // SSL
+    SSL_CTX *ctx = SSL_CTX_new(TLS_client_method());
+    SSL *ssl = SSL_new(ctx);
+    SSL_set_fd(ssl, sock);
+    if (SSL_connect(ssl) <= 0) {
+        SSL_free(ssl); SSL_CTX_free(ctx); close(sock);
+        return R"({"success":false,"error":"SSL handshake failed"})";
+    }
+
+    std::string json_body = R"({"model":")" + model_ + R"(","messages":[{"role":"system","content":"You are a visual novel identification expert. Respond ONLY with JSON."},{"role":"user","content":")" + prompt + R"("}],"temperature":0.1,"max_tokens":512})";
+
+    std::string request = "POST /chat/completions HTTP/1.1\r\n"
+                          "Host: api.deepseek.com\r\n"
+                          "Content-Type: application/json\r\n"
+                          "Authorization: Bearer " + api_key_ + "\r\n"
+                          "Content-Length: " + std::to_string(json_body.size()) + "\r\n"
+                          "Connection: close\r\n"
+                          "\r\n" + json_body;
+
+    SSL_write(ssl, request.c_str(), (int)request.size());
+
+    std::string response;
+    char buf[4096];
+    int n;
+    while ((n = SSL_read(ssl, buf, sizeof(buf) - 1)) > 0) {
+        buf[n] = '\0';
+        response += buf;
+    }
+
+    SSL_free(ssl);
+    SSL_CTX_free(ctx);
+    close(sock);
+
+    // Extract body (after double CRLF)
+    auto pos = response.find("\r\n\r\n");
+    if (pos != std::string::npos) response = response.substr(pos + 4);
+
+    return response.empty() ? R"({"success":false,"error":"Empty response"})" : response;
+}
+#endif
 
 IdentifyResult DeepSeekAPI::identify_by_files(const DetectedGame& game) {
     return parse_response(call_api(build_prompt(game)));
@@ -75,7 +144,6 @@ IdentifyResult DeepSeekAPI::parse_response(const std::string& response) {
     IdentifyResult result;
     result.raw_response = response;
 
-    // Simple JSON parsing without external library
     auto find_value = [&](const std::string& key) -> std::string {
         std::string search = "\"" + key + "\"";
         auto pos = response.find(search);

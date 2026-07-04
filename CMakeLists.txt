@@ -5,12 +5,16 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Detect platform
-if(CMAKE_SYSTEM_NAME STREQUAL "iOS" OR CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
     set(PLATFORM_IOS TRUE)
     add_definitions(-DPLATFORM_IOS=1)
 elseif(WIN32)
     set(PLATFORM_WINDOWS TRUE)
     add_definitions(-DPLATFORM_WINDOWS=1 -D_WINSOCK_DEPRECATED_NO_WARNINGS -DWIN32_LEAN_AND_MEAN -DNOMINMAX)
+else()
+    # macOS / Linux
+    set(PLATFORM_DESKTOP TRUE)
+    add_definitions(-DPLATFORM_DESKTOP=1)
 endif()
 
 # MSVC settings
@@ -18,9 +22,10 @@ if(MSVC)
     add_compile_options(/W4 /MP /utf-8)
 endif()
 
-# Source files (platform-specific files selected via preprocessor)
+# Source files
 set(COMMON_SOURCES
     src/core/protocol.cpp
+    src/core/game_scanner.cpp
     src/core/sync_engine.cpp
     src/network/tcp_server.cpp
     src/network/tcp_client.cpp
@@ -29,14 +34,9 @@ set(COMMON_SOURCES
 )
 
 if(PLATFORM_IOS)
-    set(PLATFORM_SOURCES
-        src/platform/platform_ios.mm
-    )
+    set(PLATFORM_SOURCES src/platform/platform_ios.mm)
 else()
-    set(PLATFORM_SOURCES
-        src/platform/platform.cpp
-        src/core/game_scanner.cpp
-    )
+    set(PLATFORM_SOURCES src/platform/platform.cpp)
 endif()
 
 # Build static library
@@ -44,21 +44,27 @@ add_library(krkr_sync_lib STATIC ${COMMON_SOURCES} ${PLATFORM_SOURCES})
 target_include_directories(krkr_sync_lib PUBLIC include)
 
 if(PLATFORM_IOS)
-    target_link_libraries(krkr_sync_lib PUBLIC
-        "-framework Foundation"
-        "-framework Security"
-    )
+    enable_language(OBJCXX)
     set_target_properties(krkr_sync_lib PROPERTIES
         XCODE_ATTRIBUTE_IPHONEOS_DEPLOYMENT_TARGET "14.0"
         XCODE_ATTRIBUTE_ONLY_ACTIVE_ARCH "NO"
         XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY ""
     )
-elseif(WIN32)
+    find_package(OpenSSL REQUIRED)
+    target_link_libraries(krkr_sync_lib PUBLIC
+        "-framework Foundation"
+        "-framework Security"
+        OpenSSL::SSL OpenSSL::Crypto
+    )
+elseif(PLATFORM_WINDOWS)
     target_link_libraries(krkr_sync_lib PUBLIC ws2_32 winhttp crypt32)
+else()
+    find_package(OpenSSL REQUIRED)
+    target_link_libraries(krkr_sync_lib PUBLIC OpenSSL::SSL OpenSSL::Crypto)
 endif()
 
-# Build executables (Windows only)
-if(NOT PLATFORM_IOS AND WIN32)
+# Build executables (Windows/macOS/Linux only)
+if(NOT PLATFORM_IOS AND (WIN32 OR APPLE OR UNIX))
     add_executable(krkr_sync_server src/main_server.cpp)
     target_link_libraries(krkr_sync_server PRIVATE krkr_sync_lib)
 

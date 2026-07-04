@@ -19,15 +19,11 @@ jobs:
       - name: Setup MSVC
         uses: ilammy/msvc-dev-cmd@v1
 
-      - name: Configure
+      - name: Configure & Build
         run: |
           mkdir build-windows
           cd build-windows
-          cmake .. -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=Release
-
-      - name: Build
-        run: |
-          cd build-windows
+          cmake .. -G "Visual Studio 17 2022" -A x64
           cmake --build . --config Release
 
       - name: Upload
@@ -46,48 +42,49 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Build for iOS
+      - name: Install OpenSSL
         run: |
-          mkdir -p build-ios
-          cd build-ios
+          brew install openssl@3
+
+      - name: Build for iOS Device
+        run: |
+          mkdir -p build-ios-device
+          cd build-ios-device
           cmake .. \
-            -DCMAKE_TOOLCHAIN_FILE=../cmake/ios.toolchain.cmake \
-            -DPLATFORM=OS64 \
-            -DDEPLOYMENT_TARGET=14.0 \
-            -DARCHS="arm64" \
-            -DCMAKE_BUILD_TYPE=Release
+            -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0 \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_OSX_SYSROOT=iphoneos \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DOPENSSL_ROOT_DIR=$(brew --prefix openssl@3)
           cmake --build . --config Release
 
-      - name: Package XCFramework
+      - name: Build for iOS Simulator
         run: |
-          cd build-ios
+          mkdir -p build-ios-sim
+          cd build-ios-sim
+          cmake .. \
+            -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0 \
+            -DCMAKE_OSX_ARCHITECTURES=x86_64 \
+            -DCMAKE_OSX_SYSROOT=iphonesimulator \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DOPENSSL_ROOT_DIR=$(brew --prefix openssl@3)
+          cmake --build . --config Release
+
+      - name: Create XCFramework
+        run: |
+          DEVICE_LIB=$(find build-ios-device -name "libkrkr_sync_lib.a" | head -1)
+          SIM_LIB=$(find build-ios-sim -name "libkrkr_sync_lib.a" | head -1)
           
-          # Build for device
-          xcodebuild -project krkr_sync.xcodeproj \
-            -scheme krkr_sync_lib \
-            -sdk iphoneos \
-            -configuration Release \
-            BUILD_DIR=$(pwd)/device \
-            clean build
+          echo "Device lib: $DEVICE_LIB"
+          echo "Sim lib: $SIM_LIB"
           
-          # Build for simulator (optional)
-          xcodebuild -project krkr_sync.xcodeproj \
-            -scheme krkr_sync_lib \
-            -sdk iphonesimulator \
-            -configuration Release \
-            BUILD_DIR=$(pwd)/simulator \
-            clean build
-          
-          # Find the static libraries
-          DEVICE_LIB=$(find device -name "libkrkr_sync_lib.a" | head -1)
-          SIM_LIB=$(find simulator -name "libkrkr_sync_lib.a" | head -1)
-          
-          # Create XCFramework
           xcodebuild -create-xcframework \
             -library "$DEVICE_LIB" \
             -library "$SIM_LIB" \
-            -headers ../include \
-            -output ../krkr_sync.xcframework
+            -headers include \
+            -output krkr_sync.xcframework
 
       - name: Upload
         uses: actions/upload-artifact@v4
@@ -123,28 +120,6 @@ jobs:
             
             - **krkr_sync-windows-x64.zip**: Windows x64 (Server + Client)
             - **krkr_sync-ios-arm64.zip**: iOS arm64 (XCFramework)
-            
-            ## Windows Usage
-            
-            ```bash
-            # Start server on Windows
-            krkr_sync_server.exe --folder "U:\Games" --port 29526
-            
-            # Start client
-            krkr_sync_client.exe --folder "C:\Saves" --deepseek-key "sk-xxx"
-            ```
-            
-            ## iOS Integration
-            
-            1. Add `krkr_sync.xcframework` to your Xcode project
-            2. Link against `krkr_sync_lib`
-            3. Import `<krkr_sync/protocol.h>`
-            
-            ## Game Identification
-            
-            ```bash
-            krkr_sync_client.exe --folder "U:\Games" --identify "FateStayNight" --deepseek-key "sk-xxx"
-            ```
           files: |
             krkr_sync-windows-x64.zip
             krkr_sync-ios-arm64.zip
