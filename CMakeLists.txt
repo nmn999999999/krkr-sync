@@ -12,12 +12,10 @@ elseif(WIN32)
     set(PLATFORM_WINDOWS TRUE)
     add_definitions(-DPLATFORM_WINDOWS=1 -D_WINSOCK_DEPRECATED_NO_WARNINGS -DWIN32_LEAN_AND_MEAN -DNOMINMAX)
 else()
-    # macOS / Linux
     set(PLATFORM_DESKTOP TRUE)
     add_definitions(-DPLATFORM_DESKTOP=1)
 endif()
 
-# MSVC settings
 if(MSVC)
     add_compile_options(/W4 /MP /utf-8)
 endif()
@@ -50,11 +48,9 @@ if(PLATFORM_IOS)
         XCODE_ATTRIBUTE_ONLY_ACTIVE_ARCH "NO"
         XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY ""
     )
-    find_package(OpenSSL REQUIRED)
     target_link_libraries(krkr_sync_lib PUBLIC
         "-framework Foundation"
         "-framework Security"
-        OpenSSL::SSL OpenSSL::Crypto
     )
 elseif(PLATFORM_WINDOWS)
     target_link_libraries(krkr_sync_lib PUBLIC ws2_32 winhttp crypt32)

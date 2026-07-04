@@ -3,11 +3,15 @@
 #ifdef _WIN32
 #include <winhttp.h>
 #pragma comment(lib, "winhttp.lib")
+#elif defined(PLATFORM_IOS)
+// iOS uses NSURLSession (see platform_ios.mm)
+#import <Foundation/Foundation.h>
 #else
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <netdb.h>
+#include <unistd.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #endif
@@ -68,11 +72,48 @@ std::string DeepSeekAPI::call_api(const std::string& prompt) {
 
     return response.empty() ? R"({"success":false,"error":"Empty response"})" : response;
 }
+
+#elif defined(PLATFORM_IOS)
+std::string DeepSeekAPI::call_api(const std::string& prompt) {
+    if (api_key_.empty()) return R"({"success":false,"error":"API key not set"})";
+
+    @autoreleasepool {
+        NSString *urlStr = @"https://api.deepseek.com/chat/completions";
+        NSURL *url = [NSURL URLWithString:urlStr];
+        NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
+        [request setHTTPMethod:@"POST"];
+        [request setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
+
+        NSString *authStr = [NSString stringWithFormat:@"Bearer %s", api_key_.c_str()];
+        [request setValue:authStr forHTTPHeaderField:@"Authorization"];
+
+        std::string json_body = R"({"model":")" + model_ + R"(","messages":[{"role":"system","content":"You are a visual novel identification expert. Respond ONLY with JSON."},{"role":"user","content":")" + prompt + R"("}],"temperature":0.1,"max_tokens":512})";
+
+        NSString *bodyStr = [NSString stringWithUTF8String:json_body.c_str()];
+        [request setHTTPBody:[bodyStr dataUsingEncoding:NSUTF8StringEncoding]];
+
+        dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
+        __block std::string response;
+
+        NSURLSessionDataTask *task = [[NSURLSession sharedSession] dataTaskWithRequest:request
+            completionHandler:^(NSData *data, NSURLResponse *urlResponse, NSError *error) {
+                if (data && !error) {
+                    NSString *str = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+                    response = [str UTF8String];
+                }
+                dispatch_semaphore_signal(semaphore);
+            }];
+        [task resume];
+        dispatch_semaphore_wait(semaphore, DISPATCH_TIME_FOREVER);
+
+        return response.empty() ? R"({"success":false,"error":"Empty response"})" : response;
+    }
+}
+
 #else
 std::string DeepSeekAPI::call_api(const std::string& prompt) {
     if (api_key_.empty()) return R"({"success":false,"error":"API key not set"})";
 
-    // Simple HTTPS POST using POSIX sockets + OpenSSL
     struct addrinfo hints{}, *result;
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
@@ -89,7 +130,6 @@ std::string DeepSeekAPI::call_api(const std::string& prompt) {
     }
     freeaddrinfo(result);
 
-    // SSL
     SSL_CTX *ctx = SSL_CTX_new(TLS_client_method());
     SSL *ssl = SSL_new(ctx);
     SSL_set_fd(ssl, sock);
@@ -122,7 +162,6 @@ std::string DeepSeekAPI::call_api(const std::string& prompt) {
     SSL_CTX_free(ctx);
     close(sock);
 
-    // Extract body (after double CRLF)
     auto pos = response.find("\r\n\r\n");
     if (pos != std::string::npos) response = response.substr(pos + 4);
 
