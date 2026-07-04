@@ -16,6 +16,7 @@
 #include <unistd.h>
 #include <netdb.h>
 typedef int SOCKET;
+typedef socklen_t SOCKLEN_T;
 #define INVALID_SOCKET (-1)
 #define SOCKET_ERROR   (-1)
 #define closesocket(s) close(s)

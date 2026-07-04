@@ -99,7 +99,7 @@ size_t TcpServer::client_count() const { std::lock_guard lock(sessions_mutex_); 
 void TcpServer::accept_loop() {
     while (running_) {
         sockaddr_in client_addr{};
-        int addr_len = sizeof(client_addr);
+        SOCKLEN_T addr_len = sizeof(client_addr);
         SOCKET client_sock = accept(listen_sock_, (sockaddr*)&client_addr, &addr_len);
         if (client_sock == INVALID_SOCKET) continue;
 
