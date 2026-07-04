@@ -9,6 +9,7 @@
 #pragma comment(lib, "ws2_32.lib")
 #pragma comment(lib, "winhttp.lib")
 #pragma comment(lib, "crypt32.lib")
+typedef int SOCKLEN_T;
 #else
 #include <sys/socket.h>
 #include <netinet/in.h>
