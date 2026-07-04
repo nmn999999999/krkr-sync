@@ -43,6 +43,9 @@ target_include_directories(krkr_sync_lib PUBLIC include)
 
 if(PLATFORM_IOS)
     enable_language(OBJCXX)
+    set_source_files_properties(src/platform/platform_ios.mm PROPERTIES
+        COMPILE_FLAGS "-x objective-c++"
+    )
     set_target_properties(krkr_sync_lib PROPERTIES
         XCODE_ATTRIBUTE_IPHONEOS_DEPLOYMENT_TARGET "14.0"
         XCODE_ATTRIBUTE_ONLY_ACTIVE_ARCH "NO"

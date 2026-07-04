@@ -4,8 +4,7 @@
 #include <winhttp.h>
 #pragma comment(lib, "winhttp.lib")
 #elif defined(PLATFORM_IOS)
-// iOS uses NSURLSession (see platform_ios.mm)
-#import <Foundation/Foundation.h>
+// iOS HTTP handled via platform_ios.mm
 #else
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -74,40 +73,17 @@ std::string DeepSeekAPI::call_api(const std::string& prompt) {
 }
 
 #elif defined(PLATFORM_IOS)
+
+extern std::string krkr_sync_ios_http_post(const std::string& url,
+                                            const std::string& api_key,
+                                            const std::string& json_body);
+
 std::string DeepSeekAPI::call_api(const std::string& prompt) {
     if (api_key_.empty()) return R"({"success":false,"error":"API key not set"})";
 
-    @autoreleasepool {
-        NSString *urlStr = @"https://api.deepseek.com/chat/completions";
-        NSURL *url = [NSURL URLWithString:urlStr];
-        NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
-        [request setHTTPMethod:@"POST"];
-        [request setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
+    std::string json_body = R"({"model":")" + model_ + R"(","messages":[{"role":"system","content":"You are a visual novel identification expert. Respond ONLY with JSON."},{"role":"user","content":")" + prompt + R"("}],"temperature":0.1,"max_tokens":512})";
 
-        NSString *authStr = [NSString stringWithFormat:@"Bearer %s", api_key_.c_str()];
-        [request setValue:authStr forHTTPHeaderField:@"Authorization"];
-
-        std::string json_body = R"({"model":")" + model_ + R"(","messages":[{"role":"system","content":"You are a visual novel identification expert. Respond ONLY with JSON."},{"role":"user","content":")" + prompt + R"("}],"temperature":0.1,"max_tokens":512})";
-
-        NSString *bodyStr = [NSString stringWithUTF8String:json_body.c_str()];
-        [request setHTTPBody:[bodyStr dataUsingEncoding:NSUTF8StringEncoding]];
-
-        dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
-        __block std::string response;
-
-        NSURLSessionDataTask *task = [[NSURLSession sharedSession] dataTaskWithRequest:request
-            completionHandler:^(NSData *data, NSURLResponse *urlResponse, NSError *error) {
-                if (data && !error) {
-                    NSString *str = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
-                    response = [str UTF8String];
-                }
-                dispatch_semaphore_signal(semaphore);
-            }];
-        [task resume];
-        dispatch_semaphore_wait(semaphore, DISPATCH_TIME_FOREVER);
-
-        return response.empty() ? R"({"success":false,"error":"Empty response"})" : response;
-    }
+    return krkr_sync_ios_http_post("https://api.deepseek.com/chat/completions", api_key_, json_body);
 }
 
 #else

@@ -140,3 +140,40 @@ std::vector<uint8_t> compute_file_md5(const std::string& filepath) {
 
 }  // namespace platform
 }  // namespace krkr_sync
+
+extern "C" {
+
+std::string krkr_sync_ios_http_post(const std::string& url_str,
+                                     const std::string& api_key,
+                                     const std::string& json_body) {
+    @autoreleasepool {
+        NSURL *url = [NSURL URLWithString:[NSString stringWithUTF8String:url_str.c_str()]];
+        NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
+        [request setHTTPMethod:@"POST"];
+        [request setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
+
+        NSString *authStr = [NSString stringWithFormat:@"Bearer %s", api_key.c_str()];
+        [request setValue:authStr forHTTPHeaderField:@"Authorization"];
+
+        NSString *bodyStr = [NSString stringWithUTF8String:json_body.c_str()];
+        [request setHTTPBody:[bodyStr dataUsingEncoding:NSUTF8StringEncoding]];
+
+        dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
+        __block std::string response;
+
+        NSURLSessionDataTask *task = [[NSURLSession sharedSession] dataTaskWithRequest:request
+            completionHandler:^(NSData *data, NSURLResponse *urlResponse, NSError *error) {
+                if (data && !error) {
+                    NSString *str = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+                    response = [str UTF8String];
+                }
+                dispatch_semaphore_signal(semaphore);
+            }];
+        [task resume];
+        dispatch_semaphore_wait(semaphore, DISPATCH_TIME_FOREVER);
+
+        return response.empty() ? R"({"success":false,"error":"Empty response"})" : response;
+    }
+}
+
+}  // extern "C"
