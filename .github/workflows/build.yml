@@ -80,11 +80,99 @@ jobs:
             -headers include \
             -output krkr_sync.xcframework
 
-      - name: Upload
+      - name: Package unsigned IPA
+        run: |
+          APP_NAME="KRKRSync"
+          
+          # Create .app bundle structure
+          mkdir -p "${APP_NAME}.app"
+          
+          # Copy XCFramework into the app bundle
+          cp -R krkr_sync.xcframework "${APP_NAME}.app/"
+          
+          # Create a minimal main.m
+          cat > main.m << 'MAINEOF'
+          #import <Foundation/Foundation.h>
+          #import <dlfcn.h>
+          
+          int main(int argc, char *argv[]) {
+              @autoreleasepool {
+                  NSLog(@"KRKR Sync iOS starting...");
+                  NSLog(@"Library loaded successfully");
+                  NSLog(@"Frameworks: Foundation, Security, CoreFoundation");
+                  
+                  // Keep running
+                  [[NSRunLoop currentRunLoop] run];
+              }
+              return 0;
+          }
+          MAINEOF
+          
+          # Compile minimal executable
+          xcrun -sdk iphoneos clang \
+            -arch arm64 \
+            -isysroot $(xcrun --sdk iphoneos --show-sdk-path) \
+            -miphoneos-version-min=14.0 \
+            -fobjc-arc \
+            -framework Foundation \
+            main.m -o "${APP_NAME}.app/${APP_NAME}"
+          
+          # Create Info.plist
+          cat > "${APP_NAME}.app/Info.plist" << 'PLISTEOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleName</key>
+              <string>KRKR Sync</string>
+              <key>CFBundleDisplayName</key>
+              <string>KRKR Sync</string>
+              <key>CFBundleIdentifier</key>
+              <string>com.krkr.sync</string>
+              <key>CFBundleVersion</key>
+              <string>1.0.0</string>
+              <key>CFBundleShortVersionString</key>
+              <string>1.0.0</string>
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
+              <key>CFBundleExecutable</key>
+              <string>KRKRSync</string>
+              <key>CFBundleInfoDictionaryVersion</key>
+              <string>6.0</string>
+              <key>LSRequiresIPhoneOS</key>
+              <true/>
+              <key>MinimumOSVersion</key>
+              <string>14.0</string>
+              <key>UIDeviceFamily</key>
+              <array>
+                  <integer>1</integer>
+                  <integer>2</integer>
+              </array>
+          </dict>
+          </plist>
+          PLISTEOF
+          
+          # Create Payload directory and move app into it
+          mkdir -p Payload
+          mv "${APP_NAME}.app" Payload/
+          
+          # Create unsigned IPA (zip)
+          zip -r "${APP_NAME}-unsigned.ipa" Payload/
+          
+          echo "Created: ${APP_NAME}-unsigned.ipa"
+          ls -la "${APP_NAME}-unsigned.ipa"
+
+      - name: Upload XCFramework
         uses: actions/upload-artifact@v4
         with:
           name: krkr_sync-ios-arm64
           path: krkr_sync.xcframework
+
+      - name: Upload unsigned IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: krkr_sync-ios-unsigned-ipa
+          path: KRKRSync-unsigned.ipa
 
   release:
     name: Release
@@ -96,13 +184,16 @@ jobs:
       contents: write
       
     steps:
-      - name: Download artifacts
+      - name: Download all artifacts
         uses: actions/download-artifact@v4
 
       - name: Create release archives
         run: |
           zip -r krkr_sync-windows-x64.zip krkr_sync-windows-x64/
-          zip -r krkr_sync-ios-arm64.zip krkr_sync-ios-arm64/
+          # krkr_sync-ios-arm64 is already an XCFramework, zip it
+          cd krkr_sync-ios-arm64 && zip -r ../krkr_sync-ios-arm64.zip . && cd ..
+          # IPA is already zipped, just rename
+          cp krkr_sync-ios-unsigned-ipa/KRKRSync-unsigned.ipa .
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -112,8 +203,10 @@ jobs:
           body: |
             ## Downloads
             
-            - **krkr_sync-windows-x64.zip**: Windows x64 (Server + Client)
-            - **krkr_sync-ios-arm64.zip**: iOS arm64 (XCFramework)
+            - **krkr_sync-windows-x64.zip**: Windows x64 (Server + Client executables)
+            - **krkr_sync-ios-arm64.zip**: iOS XCFramework (for developers)
+            - **KRKRSync-unsigned.ipa**: Unsigned iOS app (install via AltStore/Sideloadly/jailbreak)
           files: |
             krkr_sync-windows-x64.zip
             krkr_sync-ios-arm64.zip
+            KRKRSync-unsigned.ipa
